@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Project Gantt Chart</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f4f6f9;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+
+    .chart-wrapper {
+      background: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      padding: 36px 40px;
+      width: 100%;
+      max-width: 900px;
+    }
+
+    h1 {
+      font-size: 22px;
+      color: #1a1a2e;
+      margin-bottom: 6px;
+      font-weight: 700;
+    }
+
+    .subtitle {
+      font-size: 13px;
+      color: #888;
+      margin-bottom: 30px;
+    }
+
+    /* Week header */
+    .gantt-header {
+      display: flex;
+      margin-left: 200px;
+      margin-bottom: 8px;
+    }
+
+    .week-label {
+      flex: 1;
+      text-align: center;
+      font-size: 11px;
+      color: #aaa;
+      font-weight: 600;
+    }
+
+    /* Grid */
+    .gantt-grid {
+      position: relative;
+    }
+
+    /* Each row */
+    .gantt-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+
+    .task-name {
+      width: 200px;
+      min-width: 200px;
+      font-size: 13px;
+      color: #333;
+      font-weight: 500;
+      padding-right: 14px;
+      text-align: right;
+    }
+
+    .timeline {
+      flex: 1;
+      position: relative;
+      height: 32px;
+      background: #f0f2f5;
+      border-radius: 6px;
+      overflow: visible;
+    }
+
+    /* Vertical week lines on the timeline */
+    .timeline::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        to right,
+        transparent,
+        transparent calc(100% / 17 - 1px),
+        #e0e3e8 calc(100% / 17 - 1px),
+        #e0e3e8 calc(100% / 17)
+      );
+      pointer-events: none;
+      border-radius: 6px;
+    }
+
+    .bar {
+      position: absolute;
+      height: 100%;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      padding-left: 10px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #fff;
+      white-space: nowrap;
+      transition: opacity 0.2s;
+    }
+
+    .bar:hover { opacity: 0.85; }
+
+    /* Colors per task */
+    .bar-1 { background: #4f46e5; }
+    .bar-2 { background: #0ea5e9; }
+    .bar-3 { background: #10b981; }
+    .bar-4 { background: #f59e0b; }
+    .bar-5 { background: #ef4444; }
+    .bar-6 { background: #8b5cf6; }
+
+    .duration-tag {
+      font-size: 11px;
+      font-weight: 400;
+      opacity: 0.85;
+      margin-left: 6px;
+    }
+
+    /* Legend */
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-top: 28px;
+      border-top: 1px solid #eee;
+      padding-top: 20px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #555;
+    }
+
+    .legend-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+<div class="chart-wrapper">
+  <h1>📅 Project Gantt Chart</h1>
+  <p class="subtitle">EasyEdit AI Photo Editor — Project Timeline (17 Weeks Total)</p>
+
+  <!-- Week numbers header -->
+  <div class="gantt-header" id="weekHeader"></div>
+
+  <div class="gantt-grid" id="ganttGrid"></div>
+
+  <!-- Legend -->
+  <div class="legend" id="legend"></div>
+</div>
+
+<script>
+  const TOTAL_WEEKS = 17;
+
+  const tasks = [
+    { name: "Research & Planning",  weeks: 4, color: "bar-1", dot: "#4f46e5" },
+    { name: "System Design",        weeks: 3, color: "bar-2", dot: "#0ea5e9" },
+    { name: "Frontend Development", weeks: 3, color: "bar-3", dot: "#10b981" },
+    { name: "Backend Development",  weeks: 4, color: "bar-4", dot: "#f59e0b" },
+    { name: "Testing",              weeks: 2, color: "bar-5", dot: "#ef4444" },
+    { name: "Implementation",       weeks: 1, color: "bar-6", dot: "#8b5cf6" },
+  ];
+
+  // Build week header
+  const header = document.getElementById('weekHeader');
+  for (let w = 1; w <= TOTAL_WEEKS; w++) {
+    const span = document.createElement('span');
+    span.className = 'week-label';
+    span.textContent = `W${w}`;
+    header.appendChild(span);
+  }
+
+  // Build bars
+  const grid = document.getElementById('ganttGrid');
+  let startWeek = 0;
+
+  tasks.forEach((task, i) => {
+    const row = document.createElement('div');
+    row.className = 'gantt-row';
+
+    // Task name
+    const nameEl = document.createElement('div');
+    nameEl.className = 'task-name';
+    nameEl.textContent = task.name;
+
+    // Timeline
+    const timeline = document.createElement('div');
+    timeline.className = 'timeline';
+
+    const left  = (startWeek / TOTAL_WEEKS) * 100;
+    const width = (task.weeks / TOTAL_WEEKS) * 100;
+
+    const bar = document.createElement('div');
+    bar.className = `bar ${task.color}`;
+    bar.style.left  = `${left}%`;
+    bar.style.width = `${width}%`;
+    bar.innerHTML = `${task.name} <span class="duration-tag">(${task.weeks}w)</span>`;
+
+    timeline.appendChild(bar);
+    row.appendChild(nameEl);
+    row.appendChild(timeline);
+    grid.appendChild(row);
+
+    startWeek += task.weeks;
+  });
+
+  // Legend
+  const legend = document.getElementById('legend');
+  tasks.forEach(task => {
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    item.innerHTML = `
+      <div class="legend-dot" style="background:${task.dot}"></div>
+      ${task.name} — ${task.weeks} week${task.weeks > 1 ? 's' : ''}
+    `;
+    legend.appendChild(item);
+  });
+</script>
+</body>
+</html>
