@@ -19,6 +19,9 @@ import {
   Download,
   FileImage,
   Lock,
+  Wand2,
+  Grid3x3,
+  Contrast,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -53,6 +56,21 @@ const TOOLS = [
     id: "adjust",
     label: "Adjust",
     icon: Sliders,
+  },
+  {
+    id: "auto_enhance",
+    label: "Auto Enhance",
+    icon: Wand2,
+  },
+  {
+    id: "edge_detection",
+    label: "Edge Detection",
+    icon: Grid3x3,
+  },
+  {
+    id: "threshold",
+    label: "Threshold",
+    icon: Contrast,
   },
   {
     id: "text",

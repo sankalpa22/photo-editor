@@ -9,8 +9,14 @@ import {
   Maximize2,
   Text,
   Eye,
+  Wand2,
+  Grid3x3,
+  Contrast,
 } from "lucide-react";
 import { AdjustControls } from "./_tools/adjust";
+import { AutoEnhanceControls } from "./_tools/auto-enhance";
+import { SobelControls } from "./_tools/sobel-edge";
+import { OtsuControls } from "./_tools/otsu-threshold";
 import { BackgroundControls } from "./_tools/background-controls";
 import { useCanvas } from "@/context/context";
 import { TextControls } from "./_tools/text";
@@ -34,6 +40,21 @@ const TOOL_CONFIGS = {
     title: "Adjust",
     icon: Sliders,
     description: "Brightness, contrast, and more (Manual saving required)",
+  },
+  auto_enhance: {
+    title: "Auto Enhance",
+    icon: Wand2,
+    description: "One-click contrast boost via histogram equalization",
+  },
+  edge_detection: {
+    title: "Edge Detection",
+    icon: Grid3x3,
+    description: "Outline the image with the Sobel operator",
+  },
+  threshold: {
+    title: "Threshold",
+    icon: Contrast,
+    description: "Black & white via Otsu's automatic threshold",
   },
   background: {
     title: "Background",
@@ -99,6 +120,12 @@ function renderToolContent(activeTool, project) {
       return <ResizeControls project={project} />;
     case "adjust":
       return <AdjustControls />;
+    case "auto_enhance":
+      return <AutoEnhanceControls />;
+    case "edge_detection":
+      return <SobelControls />;
+    case "threshold":
+      return <OtsuControls />;
     case "background":
       return <BackgroundControls project={project} />;
     case "ai_extender":

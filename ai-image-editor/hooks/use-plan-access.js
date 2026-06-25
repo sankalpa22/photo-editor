@@ -13,6 +13,9 @@ export function usePlanAccess() {
     resize: true,
     crop: true,
     adjust: true,
+    auto_enhance: true,
+    edge_detection: true,
+    threshold: true,
     text: true,
 
     // Pro-only tools
