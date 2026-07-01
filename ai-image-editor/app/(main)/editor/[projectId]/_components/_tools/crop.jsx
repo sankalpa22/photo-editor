@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useCanvas } from "@/context/context";
 import { FabricImage, Rect } from "fabric";
+import { uploadDataURL } from "./pixel-utils";
 
 const ASPECT_RATIOS = [
   { label: "Freeform", value: null, icon: Maximize },
@@ -240,7 +241,7 @@ export function CropContent() {
     canvasEditor.requestRenderAll();
   };
 
-  // Apply crop transformation using Fabric.js built-in cropping
+  // Apply crop transformation by creating a cropped canvas, uploading it, and adding it as the new image
   const applyCrop = async () => {
     if (!selectedImage || !cropRect) return;
 
@@ -283,33 +284,50 @@ export function CropContent() {
       const finalCropWidth = Math.max(1, Math.min(actualCropWidth, naturalWidth - finalCropX));
       const finalCropHeight = Math.max(1, Math.min(actualCropHeight, naturalHeight - finalCropY));
 
-      // 6. Create the new cropped image
-      // The cropped image's natural size is finalCropWidth × finalCropHeight pixels.
-      // We want it to render at exactly cropWidth × cropHeight canvas pixels,
-      // so compute the scale accordingly — NOT from the original image's scale.
+      // 6. Draw the cropped portion to an offscreen canvas
+      const canvas = document.createElement("canvas");
+      canvas.width = finalCropWidth;
+      canvas.height = finalCropHeight;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(
+        selectedImage._element,
+        finalCropX,
+        finalCropY,
+        finalCropWidth,
+        finalCropHeight,
+        0,
+        0,
+        finalCropWidth,
+        finalCropHeight
+      );
+
+      const dataURL = canvas.toDataURL("image/png");
+
+      // 7. Upload to ImageKit
+      const url = await uploadDataURL(dataURL, `crop-${Date.now()}.png`);
+
+      // 8. Create a new FabricImage using the cropped image URL
+      const croppedImage = await FabricImage.fromURL(url, {
+        crossOrigin: "anonymous",
+      });
+
       const newScaleX = cropWidth / finalCropWidth;
       const newScaleY = cropHeight / finalCropHeight;
 
-      const croppedImage = new FabricImage(selectedImage._element, {
+      croppedImage.set({
         left: cropLeft + cropWidth / 2,
         top: cropTop + cropHeight / 2,
         originX: "center",
         originY: "center",
         selectable: true,
         evented: true,
-        cropX: finalCropX,
-        cropY: finalCropY,
-        width: finalCropWidth,
-        height: finalCropHeight,
         scaleX: newScaleX,
         scaleY: newScaleY,
         angle: selectedImage.angle || 0,
       });
 
-      // Preserve any custom properties (like originalSrc) so that reset/undo still work
-      if (selectedImage.originalSrc) {
-        croppedImage.originalSrc = selectedImage.originalSrc;
-      }
+      // Do not set originalSrc so that subsequent filters operate on this cropped image
+      croppedImage.originalSrc = undefined;
 
       // Replace the original image
       canvasEditor.remove(selectedImage);

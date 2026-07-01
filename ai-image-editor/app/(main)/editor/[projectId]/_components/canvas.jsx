@@ -161,117 +161,6 @@ function CanvasEditor({ project }) {
     if (!canvasEditor) return;
     let saveTimeout;
 
-    const handleCanvasChange = async () => {
-      // --- AUTO EXPAND LOGIC ---
-      const currentZoom = canvasEditor.getZoom() || 1;
-      const canvasW = canvasEditor.width / currentZoom;
-      const canvasH = canvasEditor.height / currentZoom;
-      let minX = 0;
-      let minY = 0;
-      let maxX = canvasW;
-      let maxY = canvasH;
-
-      // Filter out utility overlays like crop rectangles
-      const objects = canvasEditor.getObjects().filter(o => o.name !== "cropRect");
-      
-      if (objects.length > 0) {
-        objects.forEach((obj) => {
-          obj.setCoords();
-          const { tl, tr, bl, br } = obj.aCoords;
-          const left = Math.min(tl.x, tr.x, bl.x, br.x);
-          const top = Math.min(tl.y, tr.y, bl.y, br.y);
-          const right = Math.max(tl.x, tr.x, bl.x, br.x);
-          const bottom = Math.max(tl.y, tr.y, bl.y, br.y);
-
-          if (left < minX) minX = left;
-          if (top < minY) minY = top;
-          if (right > maxX) maxX = right;
-          if (bottom > maxY) maxY = bottom;
-        });
-
-        let newWidth = canvasW;
-        let newHeight = canvasH;
-        let shiftX = 0;
-        let shiftY = 0;
-
-        if (minX < 0) {
-          shiftX = Math.abs(minX);
-          newWidth += shiftX;
-        }
-        if (minY < 0) {
-          shiftY = Math.abs(minY);
-          newHeight += shiftY;
-        }
-        if (maxX > canvasW) newWidth += (maxX - canvasW);
-        if (maxY > canvasH) newHeight += (maxY - canvasH);
-
-        if (newWidth > canvasW || newHeight > canvasH) {
-          const padding = 40; // Add padding to comfortably fit the image
-          
-          if (shiftX > 0) { shiftX += padding; newWidth += padding; }
-          if (shiftY > 0) { shiftY += padding; newHeight += padding; }
-          if (maxX > canvasW) newWidth += padding;
-          if (maxY > canvasH) newHeight += padding;
-
-          newWidth = Math.round(newWidth);
-          newHeight = Math.round(newHeight);
-
-          // Immediately reflect structural shift locally
-          if (shiftX > 0 || shiftY > 0) {
-            objects.forEach((obj) => {
-              obj.set({
-                left: obj.left + shiftX,
-                top: obj.top + shiftY
-              });
-              obj.setCoords();
-            });
-          }
-
-          canvasEditor.setWidth(newWidth);
-          canvasEditor.setHeight(newHeight);
-
-          // Soften the jump by recomputing viewport scaling limits
-          const container = containerRef.current;
-          if (container) {
-            const containerWidth = container.clientWidth - 40;
-            const containerHeight = container.clientHeight - 40;
-            const scaleX = containerWidth / newWidth;
-            const scaleY = containerHeight / newHeight;
-            const newScale = Math.min(scaleX, scaleY, 1);
-
-            canvasEditor.setDimensions(
-              { width: newWidth * newScale, height: newHeight * newScale },
-              { backstoreOnly: false }
-            );
-            canvasEditor.setZoom(newScale);
-          }
-
-          canvasEditor.calcOffset();
-          canvasEditor.requestRenderAll();
-          
-          // Force a master save capturing the new dimensions & positions simultaneously
-          try {
-            await updateProject({
-              projectId: project._id,
-              width: newWidth,
-              height: newHeight,
-              canvasState: canvasEditor.toJSON(),
-            });
-          } catch (e) {
-            console.error("Auto expand update error:", e);
-          }
-
-          return; 
-        }
-      }
-
-      // No expansion needed -> Normal Save Debouncing
-      clearTimeout(saveTimeout);
-      saveTimeout = setTimeout(() => {
-        saveCanvasState();
-      }, 2000);
-    };
-
     const handleStandardSave = () => {
       clearTimeout(saveTimeout);
       saveTimeout = setTimeout(() => {
@@ -279,7 +168,7 @@ function CanvasEditor({ project }) {
       }, 2000);
     };
 
-    canvasEditor.on("object:modified", handleCanvasChange);
+    canvasEditor.on("object:modified", handleStandardSave);
     canvasEditor.on("object:added", handleStandardSave);
     canvasEditor.on("object:removed", handleStandardSave);
 
