@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useCallback } from "react";
-import { X, Upload, Image as ImageIcon, Loader2, Crown } from "lucide-react";
+import { X, Upload, Image as ImageIcon, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,12 +12,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { useDropzone } from "react-dropzone";
-import { useConvexMutation, useConvexQuery } from "@/hooks/use-convex-query";
-import { usePlanAccess } from "@/hooks/use-plan-access";
-import { UpgradeModal } from "@/components/upgrade-modal";
+import { useConvexMutation } from "@/hooks/use-convex-query";
 import { api } from "@/convex/_generated/api";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -27,16 +23,9 @@ export function NewProjectModal({ isOpen, onClose }) {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [projectTitle, setProjectTitle] = useState("");
   const [isUploading, setIsUploading] = useState(false);
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   const { mutate: createProject } = useConvexMutation(api.projects.create);
-  const { data: projects } = useConvexQuery(api.projects.getUserProjects);
-  const { canCreateProject, isFree } = usePlanAccess();
   const router = useRouter();
-
-  // Check if user can create new project
-  const currentProjectCount = projects?.length || 0;
-  const canCreate = canCreateProject(currentProjectCount);
 
   // Handle file drop
   const onDrop = useCallback((acceptedFiles) => {
@@ -62,12 +51,6 @@ export function NewProjectModal({ isOpen, onClose }) {
 
   // Handle create project with plan limit check
   const handleCreateProject = async () => {
-    // Check project limits first
-    if (!canCreate) {
-      setShowUpgradeModal(true);
-      return;
-    }
-
     if (!selectedFile || !projectTitle.trim()) {
       toast.error("Please select an image and enter a project title");
       return;
@@ -136,44 +119,20 @@ export function NewProjectModal({ isOpen, onClose }) {
                 <DialogTitle className="text-2xl font-bold text-white">
                   Create New Project
                 </DialogTitle>
-                {isFree && (
-                  <Badge
-                    variant="secondary"
-                    className="bg-slate-700 text-white/70"
-                  >
-                    {currentProjectCount}/100 projects
-                  </Badge>
-                )}
               </div>
             </div>
           </DialogHeader>
 
           <div className="space-y-6">
-            {/* Project Limit Warning for Free Users */}
-            {isFree && currentProjectCount >= 99 && (
-              <Alert className="bg-amber-500/10 border-amber-500/20">
-                <Crown className="h-5 w-5 text-amber-400" />
-                <AlertDescription className="text-amber-300/80">
-                  <div className="font-semibold text-amber-400 mb-1">
-                    {currentProjectCount === 99
-                      ? "Last Free Project"
-                      : "Project Limit Reached"}
-                  </div>
-                  {currentProjectCount === 99
-                    ? "This will be your last free project. Upgrade to EasyEdit Pro for unlimited projects."
-                    : "Free plan is limited to 100 projects. Upgrade to EasyEdit Pro to create more projects."}
-                </AlertDescription>
-              </Alert>
-            )}
-
             {/* File Upload Area */}
             {!selectedFile ? (
               <div
                 {...getRootProps()}
-                className={`border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all ${isDragActive
+                className={`border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all ${
+                  isDragActive
                     ? "border-cyan-400 bg-cyan-400/5"
                     : "border-white/20 hover:border-white/40"
-                  } ${!canCreate ? "opacity-50 pointer-events-none" : ""}`}
+                }`}
               >
                 <input {...getInputProps()} />
                 <Upload className="h-12 w-12 text-white/50 mx-auto mb-4" />
@@ -181,9 +140,7 @@ export function NewProjectModal({ isOpen, onClose }) {
                   {isDragActive ? "Drop your image here" : "Upload an Image"}
                 </h3>
                 <p className="text-white/70 mb-4">
-                  {canCreate
-                    ? "Drag and drop your image, or click to browse"
-                    : "Upgrade to Pro to create more projects"}
+                  Drag and drop your image, or click to browse
                 </p>
                 <p className="text-sm text-white/50">
                   Supports PNG, JPG, WEBP up to 20MB
@@ -272,14 +229,6 @@ export function NewProjectModal({ isOpen, onClose }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Upgrade Modal */}
-      <UpgradeModal
-        isOpen={showUpgradeModal}
-        onClose={() => setShowUpgradeModal(false)}
-        restrictedTool="projects"
-        reason="Free plan is limited to 100 projects. Upgrade to Pro for unlimited projects and access to all AI editing tools."
-      />
     </>
   );
 }

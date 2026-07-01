@@ -12,6 +12,8 @@ import {
   Wand2,
   Grid3x3,
   Contrast,
+  Paintbrush,
+  Droplet,
 } from "lucide-react";
 import { AdjustControls } from "./_tools/adjust";
 import { AutoEnhanceControls } from "./_tools/auto-enhance";
@@ -24,6 +26,7 @@ import { AIExtenderControls } from "./_tools/ai-extend";
 import { ResizeControls } from "./_tools/resize";
 import { AIEdit } from "./_tools/ai-edit";
 import { CropContent } from "./_tools/crop";
+import { KMeansControls } from "./_tools/kmeans-segmentation";
 
 const TOOL_CONFIGS = {
   resize: {
@@ -76,6 +79,11 @@ const TOOL_CONFIGS = {
     icon: Eye,
     description: "Enhance image quality with AI",
   },
+  kmeans: {
+    title: "K-Means Clusters",
+    icon: Paintbrush,
+    description: "Simplify and cluster colors in the image",
+  },
 };
 
 export function EditorSidebar({ project }) {
@@ -90,7 +98,7 @@ export function EditorSidebar({ project }) {
   const Icon = toolConfig.icon;
 
   return (
-    <div className="min-w-96 bg-sidebar border-r border-white/5 flex flex-col shadow-2xl">
+    <div className="w-96 min-w-96 max-w-96 bg-sidebar border-r border-white/5 flex flex-col shadow-2xl overflow-hidden">
       {/* Sidebar Header */}
       <div className="p-6 border-b border-black/5 flex flex-col gap-1">
         <div className="flex items-center gap-3">
@@ -134,6 +142,8 @@ function renderToolContent(activeTool, project) {
       return <TextControls />;
     case "ai_edit":
       return <AIEdit project={project} />;
+    case "kmeans":
+      return <KMeansControls />;
     default:
       return <div className="text-white">Select a tool to get started</div>;
   }

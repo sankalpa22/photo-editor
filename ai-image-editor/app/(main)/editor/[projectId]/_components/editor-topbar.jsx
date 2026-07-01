@@ -18,10 +18,10 @@ import {
   Save,
   Download,
   FileImage,
-  Lock,
   Wand2,
   Grid3x3,
   Contrast,
+  Paintbrush,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,8 +33,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useRouter } from "next/navigation";
 import { useCanvas } from "@/context/context";
-import { usePlanAccess } from "@/hooks/use-plan-access";
-import { UpgradeModal } from "@/components/upgrade-modal";
 import { FabricImage } from "fabric";
 import { api } from "@/convex/_generated/api";
 import { useConvexMutation, useConvexQuery } from "@/hooks/use-convex-query";
@@ -73,6 +71,12 @@ const TOOLS = [
     icon: Contrast,
   },
   {
+    id: "kmeans",
+    label: "K-Means",
+    icon: Paintbrush,
+  },
+
+  {
     id: "text",
     label: "Text",
     icon: Text,
@@ -81,19 +85,11 @@ const TOOLS = [
     id: "background",
     label: "AI Background",
     icon: Palette,
-    proOnly: true,
   },
   {
     id: "ai_extender",
     label: "AI Image Extender",
     icon: Maximize2,
-    proOnly: true,
-  },
-  {
-    id: "ai_edit",
-    label: "AI Editing",
-    icon: Eye,
-    proOnly: true,
   },
 ];
 
@@ -128,16 +124,12 @@ export function EditorTopBar({ project }) {
   const router = useRouter();
   const [isExporting, setIsExporting] = useState(false);
   const [exportFormat, setExportFormat] = useState(null);
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const [restrictedTool, setRestrictedTool] = useState(null);
+  const { activeTool, onToolChange, canvasEditor } = useCanvas();
 
   // Undo/Redo state
   const [undoStack, setUndoStack] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
   const [isUndoRedoOperation, setIsUndoRedoOperation] = useState(false);
-
-  const { activeTool, onToolChange, canvasEditor } = useCanvas();
-  const { hasAccess, canExport, isFree } = usePlanAccess();
 
   // Use the loading states from the hooks
   const { mutate: updateProject, isLoading: isSaving } = useConvexMutation(
@@ -265,13 +257,8 @@ export function EditorTopBar({ project }) {
     router.push("/dashboard");
   };
 
-  // Handle tool change with access control
+  // Handle tool change directly (no gating)
   const handleToolChange = (toolId) => {
-    if (!hasAccess(toolId)) {
-      setRestrictedTool(toolId);
-      setShowUpgradeModal(true);
-      return;
-    }
     onToolChange(toolId);
   };
 
@@ -542,20 +529,7 @@ export function EditorTopBar({ project }) {
                   </DropdownMenuItem>
                 ))}
 
-                <DropdownMenuSeparator className="bg-black/5" />
 
-                {/* Export Limit Info for Free Users */}
-                {isFree && (
-                  <div className="px-3 py-2 text-xs text-foreground/50">
-                    Free Plan: {user?.exportsThisMonth || 0}/20 exports this
-                    month
-                    {(user?.exportsThisMonth || 0) >= 20 && (
-                      <div className="text-amber-600 mt-1 font-medium">
-                        Upgrade to Pro for unlimited exports
-                      </div>
-                    )}
-                  </div>
-                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -568,7 +542,6 @@ export function EditorTopBar({ project }) {
             {TOOLS.map((tool) => {
               const Icon = tool.icon;
               const isActive = activeTool === tool.id;
-              const hasToolAccess = hasAccess(tool.id);
 
               return (
                 <Button
@@ -579,13 +552,10 @@ export function EditorTopBar({ project }) {
                   className={`gap-2 h-10 px-4 rounded-xl relative transition-all duration-300 ${isActive
                     ? "bg-primary text-primary-foreground scale-105"
                     : "text-foreground/70 hover:text-foreground hover:bg-white/5"
-                    } ${!hasToolAccess ? "opacity-60" : ""}`}
+                    }`}
                 >
                   <Icon className="h-4 w-4" />
                   {tool.label}
-                  {tool.proOnly && !hasToolAccess && (
-                    <Lock className="h-3 w-3 text-amber-400" />
-                  )}
                 </Button>
               );
             })}
@@ -620,20 +590,7 @@ export function EditorTopBar({ project }) {
         </div>
       </div>
 
-      {/* Upgrade Modal */}
-      <UpgradeModal
-        isOpen={showUpgradeModal}
-        onClose={() => {
-          setShowUpgradeModal(false);
-          setRestrictedTool(null);
-        }}
-        restrictedTool={restrictedTool}
-        reason={
-          restrictedTool === "export"
-            ? "Free plan is limited to 20 exports per month. Upgrade to Pro for unlimited exports."
-            : undefined
-        }
-      />
+
     </>
   );
 }

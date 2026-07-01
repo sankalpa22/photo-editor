@@ -111,6 +111,16 @@ export function scalarToDataURL(scalar, width, height, mapValue) {
   return canvas.toDataURL("image/png");
 }
 
+/** Turn an ImageData object into a PNG data URL. */
+export function imageDataToDataURL(imageData) {
+  const canvas = document.createElement("canvas");
+  canvas.width = imageData.width;
+  canvas.height = imageData.height;
+  const ctx = canvas.getContext("2d");
+  ctx.putImageData(imageData, 0, 0);
+  return canvas.toDataURL("image/png");
+}
+
 /** Snapshot placement so swapping the source never moves/resizes the object. */
 function captureTransform(obj) {
   return {

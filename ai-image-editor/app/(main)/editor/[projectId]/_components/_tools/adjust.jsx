@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import {
   RotateCcw,
 } from "lucide-react";
-import { filters } from "fabric";
+import { filters, classRegistry } from "fabric";
 import { useCanvas } from "@/context/context";
 
 
@@ -169,6 +169,12 @@ class ImageHueRotation extends filters.HueRotation {
   }
 }
 
+classRegistry.setClass(ImageBrightness, "ImageBrightness");
+classRegistry.setClass(ImageContrast, "ImageContrast");
+classRegistry.setClass(ImageSaturation, "ImageSaturation");
+classRegistry.setClass(ImageVibrance, "ImageVibrance");
+classRegistry.setClass(ImageBlur, "ImageBlur");
+classRegistry.setClass(ImageHueRotation, "ImageHueRotation");
 
 const FILTER_CONFIGS = [
   {

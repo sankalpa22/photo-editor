@@ -244,24 +244,148 @@ with incremental mean updates (`O(256)`).
 
 ---
 
+## 4. Color Segmentation — K-Means Clustering
+
+**File:** `_tools/kmeans-segmentation.jsx`
+**Type:** Unsupervised Machine Learning / Color Quantization
+
+### 4.1 What it does
+K-Means groups the millions of colors in an image into exactly $K$ discrete color clusters. It replaces each pixel's color with its closest cluster center (centroid), producing a segmented, stylized "posterized" image and extracting the dominant color palette.
+
+### 4.2 Intuition
+Colors in an image can be represented as 3D coordinate points in RGB space: $[R, G, B]^T$. To simplify the colors, we want to find $K$ optimal color points (centroids) such that the sum of distances between every pixel and its nearest centroid is minimized. 
+
+Because running multiple iterations on millions of pixels is computationally heavy for browser engines, we optimize this by running the clustering iterations on a sub-sampled representative set of 10,000 pixels. Once the centroids converge, we map all pixels in the full-resolution image to their nearest centroid in a single pass.
+
+### 4.3 The mathematics
+Let the image have $N$ pixels, represented as 3D vectors $\mathbf{x}_i = [R_i, G_i, B_i]^T$.
+
+1. **Centroid Initialization:** Select $K$ unique pixel colors randomly from the sub-sample to serve as initial cluster centers:
+   $$\mathbf{C} = \{\mathbf{c}_1, \mathbf{c}_2, \dots, \mathbf{c}_K\}$$
+
+2. **Cluster Assignment:** For each sampled pixel $\mathbf{x}_i$, compute the squared Euclidean distance to all $K$ centroids:
+   $$d^2(\mathbf{x}_i, \mathbf{c}_j) = (R_i - R_{cj})^2 + (G_i - G_{cj})^2 + (B_i - B_{cj})^2$$
+   Assign the pixel to the cluster $S_j$ of the closest centroid:
+   $$\mathbf{x}_i \in S_j \iff d^2(\mathbf{x}_i, \mathbf{c}_j) \le d^2(\mathbf{x}_i, \mathbf{c}_l) \quad \forall l \in [1, K]$$
+
+3. **Centroid Update:** Recalculate each cluster's centroid as the mean of its assigned pixels:
+   $$\mathbf{c}_j^{(new)} = \frac{1}{|S_j|} \sum_{\mathbf{x}_i \in S_j} \mathbf{x}_i$$
+
+4. **Convergence:** Repeat Assignment and Update steps until the cumulative shift of centroids drops below a delta threshold ($\sum \|\mathbf{c}_j^{(new)} - \mathbf{c}_j^{(old)}\| < 1$) or the iteration count reaches a safety limit (15 iterations).
+
+5. **Global Reconstruction:** Map every pixel in the full-resolution image to its closest converged centroid and update the canvas image.
+
+### 4.4 Worked numerical example
+Let $K = 2$, and we cluster 4 pixels: $P_1(10, 10, 10)$, $P_2(20, 20, 20)$, $P_3(200, 200, 200)$, $P_4(220, 220, 220)$.
+1. **Initialize:** Randomly choose initial centroids $\mathbf{c}_1 = (10, 10, 10)$ and $\mathbf{c}_2 = (200, 200, 200)$.
+2. **Assign Iteration 1:**
+   - $P_1$: closest to $\mathbf{c}_1$ (dist 0). Assigned to $S_1$.
+   - $P_2$: closest to $\mathbf{c}_1$ (dist 300). Assigned to $S_1$.
+   - $P_3$: closest to $\mathbf{c}_2$ (dist 0). Assigned to $S_2$.
+   - $P_4$: closest to $\mathbf{c}_2$ (dist 1200). Assigned to $S_2$.
+3. **Update Iteration 1:**
+   - $\mathbf{c}_1^{(new)} = \text{mean}(P_1, P_2) = (15, 15, 15)$
+   - $\mathbf{c}_2^{(new)} = \text{mean}(P_3, P_4) = (210, 210, 210)$
+4. **Assign Iteration 2:**
+   - Assignments remain identical since boundaries didn't cross.
+5. **Convergence:** Centroids do not move. Final segmented colors are $(15, 15, 15)$ for dark pixels and $(210, 210, 210)$ for light pixels.
+
+### 4.5 Complexity
+`O(I · K · S + K · N)` where:
+- $S = 10,000$ (sub-sampled pixel count for centroid updates).
+- $I \le 15$ (iteration count).
+- $K \in [2, 16]$ (number of color clusters).
+- $N = \text{Width} \times \text{Height}$ (total image pixels for final single-pass mapping).
+This hybrid design runs in under 100ms for megapixel images in browser environments.
+
+---
+
+---
+
+## 5. Smoothing Filters — Gaussian Blur
+
+**File:** `_tools/blur.jsx`
+**Type:** Local neighborhood operation / low-pass filter (spatial convolution)
+
+### 5.1 What it does
+Gaussian Blur applies a smoothing filter to the image, filtering out high-frequency noise and details. It creates a soft, out-of-focus effect (similar to viewing through a frosted lens).
+
+### 5.2 Intuition & Separability
+A 2D Gaussian filter convolved over a neighborhood of size $(2r+1) \times (2r+1)$ requires $(2r+1)^2$ multiplications per pixel. However, the Gaussian function is **separable**, meaning a 2D Gaussian kernel can be represented as the product of two 1D Gaussian kernels:
+$$G(x, y) = G(x) \cdot G(y) = \left( \frac{1}{\sqrt{2\pi}\sigma} e^{-\frac{x^2}{2\sigma^2}} \right) \cdot \left( \frac{1}{\sqrt{2\pi}\sigma} e^{-\frac{y^2}{2\sigma^2}} \right)$$
+
+This allows us to perform the convolving in two sequential 1D passes:
+1. Convolve each row horizontally with the 1D Gaussian kernel.
+2. Convolve each column of the result vertically with the same 1D Gaussian kernel.
+This reduces the computational complexity per pixel from $O(R^2)$ to $O(2R)$, which is significantly faster for larger blur radii.
+
+### 5.3 The mathematics
+Given a radius $r$ and standard deviation $\sigma = \max(r/2, 0.5)$:
+1. **1D Gaussian Kernel:** Construct an array of size $2r+1$ where for $x \in [-r, r]$:
+   $$K[x + r] = e^{-\frac{x^2}{2\sigma^2}}$$
+   Normalize the kernel so the weights sum to 1:
+   $$K_{norm}[i] = \frac{K[i]}{\sum_{j=0}^{2r} K[j]}$$
+
+2. **Horizontal Pass:**
+   $$I_{temp}(x, y) = \sum_{k=-r}^{r} I(x + k, y) \cdot K_{norm}[k + r]$$
+   Boundary pixels where $x + k < 0$ or $x + k \ge W$ are handled by replicating the edge pixel (clamping coordinate to $[0, W-1]$).
+
+3. **Vertical Pass:**
+   $$I_{out}(x, y) = \sum_{k=-r}^{r} I_{temp}(x, y + k) \cdot K_{norm}[k + r]$$
+   Clamping is applied to $y + k$ within $[0, H-1]$.
+
+### 5.4 Complexity
+$O(2 \cdot r \cdot N) = O(r \cdot N)$ where $r$ is the blur radius and $N$ is the number of pixels. This is linear with respect to the radius instead of quadratic.
+
+---
+
+## 6. Depth of Field — Background Blur
+
+**File:** `_tools/blur.jsx`
+**Type:** Edge Detection, Thresholding, and Image Compositing
+
+### 6.1 What it does
+Background Blur simulates a shallow depth-of-field effect by keeping foreground objects in sharp focus while blurring background areas. It runs entirely on the client side without AI/ML models.
+
+### 6.2 Intuition & Procedure
+In natural photographs, foreground subjects have sharp, high-contrast edges, whereas out-of-focus background regions contain mostly smooth transitions.
+1. **Focus Map Generation:** Apply a Laplacian operator to measure high-frequency local changes (edges) in the image.
+2. **Binarization:** Apply a threshold to separate sharp edge coordinates (foreground) from low-frequency flat coordinates (background).
+3. **Mask Softening:** Feather the binary mask using a small spatial blur to smooth the transition boundaries.
+4. **Compositing:** Create a fully blurred version of the image, then blend it with the original image using the feathered mask as an alpha channel.
+
+### 6.3 The mathematics
+1. **Laplacian Operator:** Convert the image to grayscale $Y(x,y) = 0.299R + 0.587G + 0.114B$. For each pixel, compute the absolute Laplacian value:
+   $$L(x,y) = \left| 8Y(x,y) - \sum_{ky=-1}^{1} \sum_{kx=-1}^{1} Y(x+kx, y+ky) \right| \quad \text{for } (kx,ky) \neq (0,0)$$
+
+2. **Binarized Mask:** For a given focus threshold $T$:
+   $$M(x,y) = \begin{cases} 255 & \text{if } \frac{L(x,y)}{\max(L)} \times 255 \ge T \\ 0 & \text{otherwise} \end{cases}$$
+
+3. **Feathered Mask ($W$):** Apply a fast box blur of radius $F$ to the binarized mask $M$:
+   $$W(x,y) = \frac{1}{(2F+1)^2} \sum_{dy=-F}^{F} \sum_{dx=-F}^{F} M(x+dx, y+dy)$$
+
+4. **Linear Composition:**
+   $$I_{out}(x,y) = I(x,y) \cdot \left(\frac{W(x,y)}{255}\right) + I_{blur}(x,y) \cdot \left(1 - \frac{W(x,y)}{255}\right)$$
+   where $I_{blur}$ is computed using `applyGaussianBlur(imageData, blurRadius)`.
+
+### 6.4 Complexity
+$O(r \cdot N)$ where $r$ is the blur radius and $N$ is the total pixel count. The focus map generation and mask compositing passes are both $O(N)$ operations.
+
+---
+
 ## Summary comparison
 
-| | Auto Enhance (Hist. Eq.) | Edge Detection (Sobel) | Threshold (Otsu) |
-|---|---|---|---|
-| Family | Contrast enhancement | Edge detection | Segmentation |
-| Works on | Global histogram | Local 3×3 neighbourhood | Global histogram |
-| Core idea | CDF as a remap curve | Image gradient ∇I | Maximise between-class variance |
-| Output | Re-toned colour image | White edges on black | Pure black & white |
-| Complexity | O(N + 256) | O(N) | O(N + 256) |
+| | Auto Enhance (Hist. Eq.) | Edge Detection (Sobel) | Threshold (Otsu) | K-Means (Color Segmentation) | Gaussian Blur | Background Blur |
+|---|---|---|---|---|---|---|
+| Family | Contrast enhancement | Edge detection | Segmentation | Machine Learning / Quantization | Low-pass spatial filtering | Defocus / Compositing |
+| Works on | Global histogram | Local 3×3 neighbourhood | Global histogram | Global color vector space | 1D Separable Neighborhood | Local Laplacian + Gaussian |
+| Core idea | CDF as a remap curve | Image gradient ∇I | Maximise between-class variance | Group RGB vectors by Euclidean distance | Separable Gaussian distribution | Identify sharp edges as foreground |
+| Output | Re-toned colour image | White edges on black | Pure black & white | Segmented color image (K colors) | Smoothed / Blurred image | Defocused background image |
+| Complexity | O(N + 256) | O(N) | O(N + 256) | O(I · K · S + K · N) | O(r · N) | O(r · N) |
 
 ## Implementation notes
-- Each algorithm's pure functions are unit-tested in isolation (histogram sums,
-  monotonic transfer LUT, zero edges on flat images, Otsu landing between
-  clusters, etc.).
-- Processed results are uploaded to ImageKit and the image source is set to the
-  returned URL. This is deliberate: baking the result into the canvas as a
-  base64 data URL would push the saved project past the backend's 1 MiB
-  document limit. Storing a short URL keeps the saved state small.
-- The pristine source is remembered on the image object (`originalSrc`) and
-  serialized with the canvas, so **Reset** works even after saving and
-  reloading the project.
+- Each algorithm's pure functions are unit-tested in isolation (histogram sums, monotonic transfer LUT, zero edges on flat images, Otsu landing between clusters, K-Means convergence properties, 1D Gaussian kernel normalization, Laplacian absolute sum).
+- Processed results are uploaded to ImageKit and the image source is set to the returned URL. This is deliberate: baking the result into the canvas as a base64 data URL would push the saved project past the backend's 1 MiB document limit. Storing a short URL keeps the saved state small.
+- The pristine source is remembered on the image object (`originalSrc`) and serialized with the canvas, so **Reset** works even after saving and reloading the project.
+
+

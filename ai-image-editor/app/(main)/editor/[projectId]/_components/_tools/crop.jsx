@@ -123,23 +123,30 @@ export function CropContent() {
 
   // Create the crop rectangle overlay
   const createCropRectangle = (image) => {
-    // Calculate image bounds on canvas
-    const bounds = image.getBoundingRect();
+    // Calculate image dimensions and position in canvas coordinates (independent of zoom)
+    const imageScaleX = image.scaleX || 1;
+    const imageScaleY = image.scaleY || 1;
+    const imageWidth = image.width * imageScaleX;
+    const imageHeight = image.height * imageScaleY;
+
+    // Get the top-left corner of the image in canvas coordinates
+    const imageLeft = image.left - (image.originX === "center" ? imageWidth / 2 : 0);
+    const imageTop = image.top - (image.originY === "center" ? imageHeight / 2 : 0);
 
     const cropRectangle = new Rect({
-      left: bounds.left + bounds.width * 0.1,
-      top: bounds.top + bounds.height * 0.1,
-      width: bounds.width * 0.8,
-      height: bounds.height * 0.8,
+      left: imageLeft + imageWidth * 0.1,
+      top: imageTop + imageHeight * 0.1,
+      width: imageWidth * 0.8,
+      height: imageHeight * 0.8,
       fill: "transparent",
       stroke: "#00bcd4",
-      strokeWidth: 2,
+      strokeWidth: 2 / (canvasEditor.getZoom() || 1),
       strokeDashArray: [5, 5],
       selectable: true,
       evented: true,
       name: "cropRect",
       cornerColor: "#00bcd4",
-      cornerSize: 12,
+      cornerSize: 12 / (canvasEditor.getZoom() || 1),
       transparentCorners: false,
       cornerStyle: "circle",
       borderColor: "#00bcd4",
@@ -215,7 +222,12 @@ export function CropContent() {
   const applyAspectRatio = (ratio) => {
     setSelectedRatio(ratio);
 
-    if (!cropRect || ratio === null) return;
+    if (!cropRect) return;
+
+    if (ratio === null) {
+      // For freeform, keep the current scale factors
+      return;
+    }
 
     // Calculate new dimensions maintaining aspect ratio
     const currentWidth = cropRect.width * cropRect.scaleX;
@@ -223,7 +235,6 @@ export function CropContent() {
 
     cropRect.set({
       height: newHeight / cropRect.scaleY,
-      scaleY: cropRect.scaleX,
     });
 
     canvasEditor.requestRenderAll();
@@ -234,44 +245,71 @@ export function CropContent() {
     if (!selectedImage || !cropRect) return;
 
     try {
-      // Get crop rectangle bounds
-      const cropBounds = cropRect.getBoundingRect();
-      const imageBounds = selectedImage.getBoundingRect();
-
-      // Calculate crop relative to the original image
-      const cropX = Math.max(0, cropBounds.left - imageBounds.left);
-      const cropY = Math.max(0, cropBounds.top - imageBounds.top);
-      const cropWidth = Math.min(cropBounds.width, imageBounds.width - cropX);
-      const cropHeight = Math.min(
-        cropBounds.height,
-        imageBounds.height - cropY
-      );
-
-      // Convert to image coordinate system (accounting for image scaling)
+      // 1. Get image position and dimensions in canvas coordinates
       const imageScaleX = selectedImage.scaleX || 1;
       const imageScaleY = selectedImage.scaleY || 1;
+      const imageWidth = selectedImage.width * imageScaleX;
+      const imageHeight = selectedImage.height * imageScaleY;
 
-      const actualCropX = cropX / imageScaleX;
-      const actualCropY = cropY / imageScaleY;
+      const imageLeft = selectedImage.left - (selectedImage.originX === "center" ? imageWidth / 2 : 0);
+      const imageTop = selectedImage.top - (selectedImage.originY === "center" ? imageHeight / 2 : 0);
+
+      // 2. Get crop rectangle position and dimensions in canvas coordinates
+      const cropWidth = cropRect.width * cropRect.scaleX;
+      const cropHeight = cropRect.height * cropRect.scaleY;
+      const cropLeft = cropRect.left - (cropRect.originX === "center" ? cropWidth / 2 : 0);
+      const cropTop = cropRect.top - (cropRect.originY === "center" ? cropHeight / 2 : 0);
+
+      // 3. Calculate crop relative to the image top-left in canvas coordinates
+      const relativeX = cropLeft - imageLeft;
+      const relativeY = cropTop - imageTop;
+
+      // 4. Convert relative canvas coordinates to pixels on the original image element
+      // If the image was already cropped, we offset by the existing cropX / cropY
+      const currentCropX = selectedImage.cropX || 0;
+      const currentCropY = selectedImage.cropY || 0;
+
+      const actualCropX = currentCropX + (relativeX / imageScaleX);
+      const actualCropY = currentCropY + (relativeY / imageScaleY);
       const actualCropWidth = cropWidth / imageScaleX;
       const actualCropHeight = cropHeight / imageScaleY;
 
-      // Create a new cropped image using Fabric.js cropping
+      // 5. Clamp crop values to the natural dimensions of the source element
+      const naturalWidth = selectedImage._element.naturalWidth || selectedImage._element.width;
+      const naturalHeight = selectedImage._element.naturalHeight || selectedImage._element.height;
+
+      const finalCropX = Math.max(0, Math.min(actualCropX, naturalWidth));
+      const finalCropY = Math.max(0, Math.min(actualCropY, naturalHeight));
+      const finalCropWidth = Math.max(1, Math.min(actualCropWidth, naturalWidth - finalCropX));
+      const finalCropHeight = Math.max(1, Math.min(actualCropHeight, naturalHeight - finalCropY));
+
+      // 6. Create the new cropped image
+      // The cropped image's natural size is finalCropWidth × finalCropHeight pixels.
+      // We want it to render at exactly cropWidth × cropHeight canvas pixels,
+      // so compute the scale accordingly — NOT from the original image's scale.
+      const newScaleX = cropWidth / finalCropWidth;
+      const newScaleY = cropHeight / finalCropHeight;
+
       const croppedImage = new FabricImage(selectedImage._element, {
-        left: cropBounds.left + cropBounds.width / 2,
-        top: cropBounds.top + cropBounds.height / 2,
+        left: cropLeft + cropWidth / 2,
+        top: cropTop + cropHeight / 2,
         originX: "center",
         originY: "center",
         selectable: true,
         evented: true,
-        // Apply crop using Fabric.js crop properties
-        cropX: actualCropX,
-        cropY: actualCropY,
-        width: actualCropWidth,
-        height: actualCropHeight,
-        scaleX: imageScaleX,
-        scaleY: imageScaleY,
+        cropX: finalCropX,
+        cropY: finalCropY,
+        width: finalCropWidth,
+        height: finalCropHeight,
+        scaleX: newScaleX,
+        scaleY: newScaleY,
+        angle: selectedImage.angle || 0,
       });
+
+      // Preserve any custom properties (like originalSrc) so that reset/undo still work
+      if (selectedImage.originalSrc) {
+        croppedImage.originalSrc = selectedImage.originalSrc;
+      }
 
       // Replace the original image
       canvasEditor.remove(selectedImage);
