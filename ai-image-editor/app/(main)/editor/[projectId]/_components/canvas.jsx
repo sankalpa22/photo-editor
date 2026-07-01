@@ -163,8 +163,9 @@ function CanvasEditor({ project }) {
 
     const handleCanvasChange = async () => {
       // --- AUTO EXPAND LOGIC ---
-      let canvasW = canvasEditor.width;
-      let canvasH = canvasEditor.height;
+      const currentZoom = canvasEditor.getZoom() || 1;
+      const canvasW = canvasEditor.width / currentZoom;
+      const canvasH = canvasEditor.height / currentZoom;
       let minX = 0;
       let minY = 0;
       let maxX = canvasW;
@@ -175,11 +176,17 @@ function CanvasEditor({ project }) {
       
       if (objects.length > 0) {
         objects.forEach((obj) => {
-          const rect = obj.getBoundingRect(true, true);
-          if (rect.left < minX) minX = rect.left;
-          if (rect.top < minY) minY = rect.top;
-          if (rect.left + rect.width > maxX) maxX = rect.left + rect.width;
-          if (rect.top + rect.height > maxY) maxY = rect.top + rect.height;
+          obj.setCoords();
+          const { tl, tr, bl, br } = obj.aCoords;
+          const left = Math.min(tl.x, tr.x, bl.x, br.x);
+          const top = Math.min(tl.y, tr.y, bl.y, br.y);
+          const right = Math.max(tl.x, tr.x, bl.x, br.x);
+          const bottom = Math.max(tl.y, tr.y, bl.y, br.y);
+
+          if (left < minX) minX = left;
+          if (top < minY) minY = top;
+          if (right > maxX) maxX = right;
+          if (bottom > maxY) maxY = bottom;
         });
 
         let newWidth = canvasW;
