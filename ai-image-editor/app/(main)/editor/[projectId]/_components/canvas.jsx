@@ -35,8 +35,13 @@ function shiftObjectHorizontally(object, offset) {
 function CanvasEditor({ project }) {
   const canvasRef = useRef();
   const containerRef = useRef();
-  const { canvasEditor, setCanvasEditor, activeTool, onToolChange } =
-    useCanvas();
+  const {
+    canvasEditor,
+    setCanvasEditor,
+    activeTool,
+    onToolChange,
+    setHasUnsavedChanges,
+  } = useCanvas();
   const [isLoading, setIsLoading] = useState(true);
 
   const { mutate: updateProject } = useConvexMutation(
@@ -58,6 +63,7 @@ function CanvasEditor({ project }) {
 
   useEffect(() => {
     if (!canvasRef.current || !project || canvasEditor) return;
+    let canvasInstance = null;
 
     const initializeCanvas = async () => {
       setIsLoading(true);
@@ -87,6 +93,7 @@ function CanvasEditor({ project }) {
         renderOnAddRemove: true,
         skipTargetFind: false,
       });
+      canvasInstance = canvas;
       canvas.workspacePaddingApplied = true;
 
       // Sync both lower and upper canvas layers
@@ -193,49 +200,30 @@ function CanvasEditor({ project }) {
     initializeCanvas();
 
     return () => {
-      if (canvasEditor) {
-        canvasEditor.dispose();
+      if (canvasInstance) {
+        canvasInstance.dispose();
         setCanvasEditor(null);
       }
     };
   }, [project]);
 
-  const saveCanvasState = async () => {
-    if (!canvasEditor || !project) return;
-
-    try {
-      const canvasJSON = canvasEditor.toJSON();
-      await updateProject({
-        projectId: project._id,
-        canvasState: canvasJSON,
-      });
-    } catch (error) {
-      console.error("Error saving canvas state:", error);
-    }
-  };
-
   useEffect(() => {
     if (!canvasEditor) return;
-    let saveTimeout;
 
-    const handleStandardSave = () => {
-      clearTimeout(saveTimeout);
-      saveTimeout = setTimeout(() => {
-        saveCanvasState();
-      }, 2000);
-    };
+    const markUnsaved = () => setHasUnsavedChanges?.(true);
 
-    canvasEditor.on("object:modified", handleStandardSave);
-    canvasEditor.on("object:added", handleStandardSave);
-    canvasEditor.on("object:removed", handleStandardSave);
+    canvasEditor.on("object:modified", markUnsaved);
+    canvasEditor.on("object:added", markUnsaved);
+    canvasEditor.on("object:removed", markUnsaved);
+    canvasEditor.on("path:created", markUnsaved);
 
     return () => {
-      clearTimeout(saveTimeout);
-      canvasEditor.off("object:modified", handleCanvasChange);
-      canvasEditor.off("object:added", handleStandardSave);
-      canvasEditor.off("object:removed", handleStandardSave);
+      canvasEditor.off("object:modified", markUnsaved);
+      canvasEditor.off("object:added", markUnsaved);
+      canvasEditor.off("object:removed", markUnsaved);
+      canvasEditor.off("path:created", markUnsaved);
     };
-  }, [canvasEditor]);
+  }, [canvasEditor, setHasUnsavedChanges]);
 
   useEffect(() => {
     if (!canvasEditor) return;

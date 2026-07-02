@@ -16,6 +16,7 @@ export default function EditorPage() {
   const projectId = params.projectId;
   const [canvasEditor, setCanvasEditor] = useState(null);
   const [processingMessage, setProcessingMessage] = useState(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   // State for active tool
   const [activeTool, setActiveTool] = useState("resize");
@@ -63,6 +64,8 @@ export default function EditorPage() {
         onToolChange: setActiveTool,
         processingMessage,
         setProcessingMessage,
+        hasUnsavedChanges,
+        setHasUnsavedChanges,
       }}
     >
       {/* Mobile Message - Show on screens smaller than lg (1024px) */}

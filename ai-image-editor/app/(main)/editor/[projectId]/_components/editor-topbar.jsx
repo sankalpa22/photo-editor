@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   ArrowLeft,
   RotateCcw,
@@ -31,6 +31,14 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useRouter } from "next/navigation";
 import { useCanvas } from "@/context/context";
 import { FabricImage } from "fabric";
@@ -213,7 +221,16 @@ export function EditorTopBar({ project }) {
   const router = useRouter();
   const [isExporting, setIsExporting] = useState(false);
   const [exportFormat, setExportFormat] = useState(null);
-  const { activeTool, onToolChange, canvasEditor } = useCanvas();
+  const [showLeaveDialog, setShowLeaveDialog] = useState(false);
+  const [isSavingBeforeLeave, setIsSavingBeforeLeave] = useState(false);
+  const allowNavigationRef = useRef(false);
+  const {
+    activeTool,
+    onToolChange,
+    canvasEditor,
+    hasUnsavedChanges,
+    setHasUnsavedChanges,
+  } = useCanvas();
 
   // Undo/Redo state
   const [undoStack, setUndoStack] = useState([]);
@@ -301,6 +318,7 @@ export function EditorTopBar({ project }) {
         await canvasEditor.loadFromJSON(JSON.parse(previousState));
         canvasEditor.requestRenderAll();
         setUndoStack(newUndoStack);
+        setHasUnsavedChanges?.(true);
         toast.success("Undid last action");
       }
     } catch (error) {
@@ -331,6 +349,7 @@ export function EditorTopBar({ project }) {
         await canvasEditor.loadFromJSON(JSON.parse(nextState));
         canvasEditor.requestRenderAll();
         setRedoStack(newRedoStack);
+        setHasUnsavedChanges?.(true);
         toast.success("Redid last action");
       }
     } catch (error) {
@@ -341,8 +360,57 @@ export function EditorTopBar({ project }) {
     }
   };
 
-  const handleBackToDashboard = () => {
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+
+    const handleBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [hasUnsavedChanges]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+
+    window.history.pushState(
+      { easyEditUnsavedGuard: true },
+      "",
+      window.location.href
+    );
+
+    const handlePopState = () => {
+      if (allowNavigationRef.current) return;
+      window.history.pushState(
+        { easyEditUnsavedGuard: true },
+        "",
+        window.location.href
+      );
+      setShowLeaveDialog(true);
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, [hasUnsavedChanges]);
+
+  const navigateToDashboard = () => {
+    allowNavigationRef.current = true;
     router.push("/dashboard");
+  };
+
+  const handleBackToDashboard = () => {
+    if (hasUnsavedChanges) {
+      setShowLeaveDialog(true);
+      return;
+    }
+
+    navigateToDashboard();
   };
 
   // Handle tool change directly (no gating)
@@ -350,11 +418,10 @@ export function EditorTopBar({ project }) {
     onToolChange(toolId);
   };
 
-  // Manual save functionality
-  const handleManualSave = async () => {
+  const saveProject = async () => {
     if (!canvasEditor || !project) {
       toast.error("Canvas not ready for saving");
-      return;
+      return false;
     }
 
     try {
@@ -363,11 +430,38 @@ export function EditorTopBar({ project }) {
         projectId: project._id,
         canvasState: canvasJSON,
       });
-      toast.success("Project saved successfully!");
+      setHasUnsavedChanges?.(false);
+      return true;
     } catch (error) {
       console.error("Error saving project:", error);
       toast.error("Failed to save project. Please try again.");
+      return false;
     }
+  };
+
+  // Manual save functionality
+  const handleManualSave = async () => {
+    const saved = await saveProject();
+    if (saved) {
+      toast.success("Project saved successfully!");
+    }
+  };
+
+  const handleLeaveWithoutSaving = () => {
+    setHasUnsavedChanges?.(false);
+    setShowLeaveDialog(false);
+    navigateToDashboard();
+  };
+
+  const handleSaveAndLeave = async () => {
+    setIsSavingBeforeLeave(true);
+    const saved = await saveProject();
+    setIsSavingBeforeLeave(false);
+    if (!saved) return;
+
+    toast.success("Project saved successfully!");
+    setShowLeaveDialog(false);
+    navigateToDashboard();
   };
 
   // Export canvas as image
@@ -474,6 +568,7 @@ export function EditorTopBar({ project }) {
         activeTransformations: undefined,
         backgroundRemoved: false,
       });
+      setHasUnsavedChanges?.(false);
 
       toast.success("Canvas reset to original image");
     } catch (error) {
@@ -488,6 +583,55 @@ export function EditorTopBar({ project }) {
 
   return (
     <>
+      <Dialog open={showLeaveDialog} onOpenChange={setShowLeaveDialog}>
+        <DialogContent className="border-white/10 bg-slate-900 text-white sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Save changes?</DialogTitle>
+            <DialogDescription className="text-white/60">
+              You have unsaved edits in this project. Save before returning to
+              the dashboard, or leave without saving.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => setShowLeaveDialog(false)}
+              disabled={isSavingBeforeLeave}
+              className="text-white/70 hover:text-white"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleLeaveWithoutSaving}
+              disabled={isSavingBeforeLeave}
+              className="border-white/10 text-white hover:bg-white/10"
+            >
+              Don&apos;t Save
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleSaveAndLeave}
+              disabled={isSavingBeforeLeave || !canvasEditor}
+              className="gap-2"
+            >
+              {isSavingBeforeLeave ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4" />
+                  Save & Leave
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="bg-background/80 backdrop-blur-xl border-b border-white/5 px-6 py-4">
         {/* Header Row */}
         <div className="flex items-center justify-between mb-4">

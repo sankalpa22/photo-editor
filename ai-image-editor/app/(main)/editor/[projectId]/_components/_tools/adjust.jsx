@@ -290,6 +290,7 @@ export function AdjustControls() {
       imageObject.filters = filtersToApply;
       imageObject.applyFilters();
       canvasEditor.requestRenderAll();
+      canvasEditor.fire("object:modified", { target: imageObject });
     } catch (error) {
       console.error("Error applying filters:", error);
     } finally {
