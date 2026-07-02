@@ -35,7 +35,7 @@ import { useRouter } from "next/navigation";
 import { useCanvas } from "@/context/context";
 import { FabricImage } from "fabric";
 import { api } from "@/convex/_generated/api";
-import { useConvexMutation, useConvexQuery } from "@/hooks/use-convex-query";
+import { useConvexMutation } from "@/hooks/use-convex-query";
 import { toast } from "sonner";
 
 const TOOLS = [
@@ -120,6 +120,95 @@ const EXPORT_FORMATS = [
   },
 ];
 
+const IMAGE_TRANSFORM_PROPS = [
+  "left",
+  "top",
+  "scaleX",
+  "scaleY",
+  "angle",
+  "flipX",
+  "flipY",
+  "originX",
+  "originY",
+  "skewX",
+  "skewY",
+];
+
+const waitForNextFrame = () =>
+  new Promise((resolve) => requestAnimationFrame(resolve));
+
+function snapshotCanvasView(canvasEditor) {
+  return {
+    width: canvasEditor.getWidth(),
+    height: canvasEditor.getHeight(),
+    zoom: canvasEditor.getZoom(),
+    viewportTransform: canvasEditor.viewportTransform
+      ? [...canvasEditor.viewportTransform]
+      : [1, 0, 0, 1, 0, 0],
+  };
+}
+
+function restoreCanvasView(canvasEditor, view) {
+  canvasEditor.setDimensions({
+    width: view.width,
+    height: view.height,
+  });
+  canvasEditor.setZoom(view.zoom);
+  canvasEditor.setViewportTransform(view.viewportTransform);
+  canvasEditor.requestRenderAll();
+}
+
+function getImageElement(imageObject) {
+  return imageObject.getElement?.() || imageObject._element;
+}
+
+function isRemoteImage(src) {
+  return /^https?:\/\//i.test(src || "");
+}
+
+function isImageReady(imageObject) {
+  const element = getImageElement(imageObject);
+  if (!element) return false;
+  if (element instanceof HTMLImageElement) {
+    const hasAnonymousCors = element.crossOrigin === "anonymous";
+    return (
+      element.complete &&
+      element.naturalWidth > 0 &&
+      (!isRemoteImage(imageObject.getSrc?.()) || hasAnonymousCors)
+    );
+  }
+  return true;
+}
+
+async function ensureCanvasImagesReady(canvasEditor) {
+  const objectImages = canvasEditor
+    .getObjects()
+    .filter((object) => object.type === "image");
+  const imageObjects = [
+    canvasEditor.backgroundImage,
+    canvasEditor.overlayImage,
+    ...objectImages,
+  ].filter((object) => object?.type === "image");
+
+  await Promise.all(
+    imageObjects.map(async (imageObject) => {
+      if (isImageReady(imageObject)) return;
+
+      const src = imageObject.getSrc?.();
+      if (!src) return;
+
+      const transform = IMAGE_TRANSFORM_PROPS.reduce((props, key) => {
+        props[key] = imageObject[key];
+        return props;
+      }, {});
+
+      await imageObject.setSrc(src, { crossOrigin: "anonymous" });
+      imageObject.set(transform);
+      imageObject.setCoords();
+    })
+  );
+}
+
 export function EditorTopBar({ project }) {
   const router = useRouter();
   const [isExporting, setIsExporting] = useState(false);
@@ -135,7 +224,6 @@ export function EditorTopBar({ project }) {
   const { mutate: updateProject, isLoading: isSaving } = useConvexMutation(
     api.projects.updateProject
   );
-  const { data: user } = useConvexQuery(api.users.getCurrentUser);
 
   // Save canvas state to undo stack
   const saveToUndoStack = () => {
@@ -289,29 +377,22 @@ export function EditorTopBar({ project }) {
       return;
     }
 
-    // Check export limits for free users
-    if (!canExport(user?.exportsThisMonth || 0)) {
-      setRestrictedTool("export");
-      setShowUpgradeModal(true);
-      return;
-    }
-
     setIsExporting(true);
     setExportFormat(exportConfig.format);
+    const previousView = snapshotCanvasView(canvasEditor);
 
     try {
-      // Store current canvas state for restoration
-      const currentZoom = canvasEditor.getZoom();
-      const currentViewportTransform = [...canvasEditor.viewportTransform];
+      await ensureCanvasImagesReady(canvasEditor);
 
-      // Reset zoom and viewport for accurate export
-      canvasEditor.setZoom(1);
-      canvasEditor.setViewportTransform([1, 0, 0, 1, 0, 0]);
+      // Reset zoom and viewport for accurate full-resolution export.
       canvasEditor.setDimensions({
         width: project.width,
         height: project.height,
       });
-      canvasEditor.requestRenderAll();
+      canvasEditor.setZoom(1);
+      canvasEditor.setViewportTransform([1, 0, 0, 1, 0, 0]);
+      canvasEditor.renderAll();
+      await waitForNextFrame();
 
       // Export the canvas
       const dataURL = canvasEditor.toDataURL({
@@ -319,15 +400,6 @@ export function EditorTopBar({ project }) {
         quality: exportConfig.quality,
         multiplier: 1,
       });
-
-      // Restore original canvas state
-      canvasEditor.setZoom(currentZoom);
-      canvasEditor.setViewportTransform(currentViewportTransform);
-      canvasEditor.setDimensions({
-        width: project.width * currentZoom,
-        height: project.height * currentZoom,
-      });
-      canvasEditor.requestRenderAll();
 
       // Download the image
       const link = document.createElement("a");
@@ -342,6 +414,7 @@ export function EditorTopBar({ project }) {
       console.error("Error exporting image:", error);
       toast.error("Failed to export image. Please try again.");
     } finally {
+      restoreCanvasView(canvasEditor, previousView);
       setIsExporting(false);
       setExportFormat(null);
     }
@@ -504,24 +577,24 @@ export function EditorTopBar({ project }) {
 
               <DropdownMenuContent
                 align="end"
-                className="w-64 bg-white/95 backdrop-blur-xl border-black/5 rounded-2xl p-2 shadow-2xl"
+                className="z-[80] w-72 rounded-xl border border-white/10 bg-popover/95 p-2 text-popover-foreground shadow-2xl backdrop-blur-xl"
               >
-                <div className="px-3 py-2 text-sm text-foreground/70">
+                <div className="px-3 py-2 text-sm text-popover-foreground/70">
                   Export Resolution: {project.width} × {project.height}px
                 </div>
 
-                <DropdownMenuSeparator className="bg-black/5" />
+                <DropdownMenuSeparator className="bg-white/10" />
 
                 {EXPORT_FORMATS.map((config, index) => (
                   <DropdownMenuItem
                     key={index}
                     onClick={() => handleExport(config)}
-                    className="text-foreground hover:bg-black/5 rounded-lg cursor-pointer flex items-center gap-3 p-3 transition-colors"
+                    className="flex cursor-pointer items-center gap-3 rounded-lg p-3 text-popover-foreground transition-colors hover:bg-white/10 focus:bg-white/10 focus:text-popover-foreground"
                   >
-                    <FileImage className="h-4 w-4" />
+                    <FileImage className="h-4 w-4 text-popover-foreground/70" />
                     <div className="flex-1">
                       <div className="font-medium">{config.label}</div>
-                      <div className="text-xs text-foreground/50">
+                      <div className="text-xs text-popover-foreground/55">
                         {config.format} • {Math.round(config.quality * 100)}%
                         quality
                       </div>
