@@ -30,6 +30,12 @@ function getDefaultWorkspaceSize(imageWidth, imageHeight) {
   };
 }
 
+function getInitialCanvasState() {
+  return {
+    workspacePaddingApplied: true,
+  };
+}
+
 export function NewProjectModal({ isOpen, onClose }) {
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -100,8 +106,7 @@ export function NewProjectModal({ isOpen, onClose }) {
         thumbnailUrl: uploadData.thumbnailUrl,
         width: workspaceSize.width,
         height: workspaceSize.height,
-        canvasState: null,
-        workspacePaddingApplied: true,
+        canvasState: getInitialCanvasState(),
       });
 
       toast.success("Project created successfully!");

@@ -5,9 +5,25 @@ import { Canvas, FabricImage } from "fabric";
 import React, { useEffect, useRef, useState } from "react";
 
 const WORKSPACE_SIDE_PADDING_RATIO = 0.12;
+const WORKSPACE_CANVAS_STATE_PROPS = ["workspacePaddingApplied"];
+
+if (Canvas && !Canvas.prototype.__workspacePaddingPatched) {
+  const baseToObject = Canvas.prototype.toObject;
+  Canvas.prototype.toObject = function (propertiesToInclude = []) {
+    return baseToObject.call(this, [
+      ...propertiesToInclude,
+      ...WORKSPACE_CANVAS_STATE_PROPS,
+    ]);
+  };
+  Canvas.prototype.__workspacePaddingPatched = true;
+}
 
 function getExpandedWorkspaceWidth(width) {
   return Math.round(width * (1 + WORKSPACE_SIDE_PADDING_RATIO * 2));
+}
+
+function hasFabricObjects(canvasState) {
+  return Array.isArray(canvasState?.objects);
 }
 
 function shiftObjectHorizontally(object, offset) {
@@ -46,7 +62,8 @@ function CanvasEditor({ project }) {
     const initializeCanvas = async () => {
       setIsLoading(true);
 
-      const shouldExpandWorkspace = project.workspacePaddingApplied !== true;
+      const shouldExpandWorkspace =
+        project.canvasState?.workspacePaddingApplied !== true;
       const workspaceWidth = shouldExpandWorkspace
         ? getExpandedWorkspaceWidth(project.width)
         : project.width;
@@ -70,6 +87,7 @@ function CanvasEditor({ project }) {
         renderOnAddRemove: true,
         skipTargetFind: false,
       });
+      canvas.workspacePaddingApplied = true;
 
       // Sync both lower and upper canvas layers
       canvas.setDimensions(
@@ -130,9 +148,10 @@ function CanvasEditor({ project }) {
       }
 
       // Load saved canvas state
-      if (project.canvasState) {
+      if (hasFabricObjects(project.canvasState)) {
         try {
           await canvas.loadFromJSON(project.canvasState);
+          canvas.workspacePaddingApplied = true;
           if (shouldExpandWorkspace) {
             canvas.getObjects().forEach((object) => {
               shiftObjectHorizontally(object, workspaceSideOffset);
@@ -162,7 +181,6 @@ function CanvasEditor({ project }) {
             width: workspaceWidth,
             height: workspaceHeight,
             canvasState: canvas.toJSON(),
-            workspacePaddingApplied: true,
           });
         } catch (error) {
           console.error("Error saving expanded workspace:", error);
