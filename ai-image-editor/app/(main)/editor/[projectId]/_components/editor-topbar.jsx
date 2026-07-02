@@ -441,13 +441,12 @@ export function EditorTopBar({ project }) {
         crossOrigin: "anonymous",
       });
 
-      // Calculate proper scaling
-      const imgAspectRatio = fabricImage.width / fabricImage.height;
-      const canvasAspectRatio = project.width / project.height;
-      const scale =
-        imgAspectRatio > canvasAspectRatio
-          ? project.width / fabricImage.width
-          : project.height / fabricImage.height;
+      // Fit inside the workspace while preserving any white margin.
+      const scale = Math.min(
+        project.width / fabricImage.width,
+        project.height / fabricImage.height,
+        1
+      );
 
       fabricImage.set({
         left: project.width / 2,

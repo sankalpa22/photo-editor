@@ -33,6 +33,7 @@ export const create = mutation({
     width: v.number(),
     height: v.number(),
     canvasState: v.optional(v.any()),
+    workspacePaddingApplied: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const user = await ctx.runQuery(internal.users.getCurrentUser);
@@ -61,6 +62,7 @@ export const create = mutation({
       width: args.width,
       height: args.height,
       canvasState: args.canvasState,
+      workspacePaddingApplied: args.workspacePaddingApplied ?? true,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
@@ -133,6 +135,7 @@ export const updateProject = mutation({
     thumbnailUrl: v.optional(v.string()),
     activeTransformations: v.optional(v.string()),
     backgroundRemoved: v.optional(v.boolean()),
+    workspacePaddingApplied: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const user = await ctx.runQuery(internal.users.getCurrentUser);
@@ -164,6 +167,8 @@ export const updateProject = mutation({
       updateData.activeTransformations = args.activeTransformations;
     if (args.backgroundRemoved !== undefined)
       updateData.backgroundRemoved = args.backgroundRemoved;
+    if (args.workspacePaddingApplied !== undefined)
+      updateData.workspacePaddingApplied = args.workspacePaddingApplied;
 
     await ctx.db.patch(args.projectId, updateData);
 

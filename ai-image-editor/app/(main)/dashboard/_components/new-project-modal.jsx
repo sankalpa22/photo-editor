@@ -18,6 +18,18 @@ import { api } from "@/convex/_generated/api";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
+const WORKSPACE_SIDE_PADDING_RATIO = 0.12;
+
+function getDefaultWorkspaceSize(imageWidth, imageHeight) {
+  const width = imageWidth || 800;
+  const height = imageHeight || 600;
+
+  return {
+    width: Math.round(width * (1 + WORKSPACE_SIDE_PADDING_RATIO * 2)),
+    height,
+  };
+}
+
 export function NewProjectModal({ isOpen, onClose }) {
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -75,15 +87,21 @@ export function NewProjectModal({ isOpen, onClose }) {
         throw new Error(uploadData.error || "Failed to upload image");
       }
 
+      const workspaceSize = getDefaultWorkspaceSize(
+        uploadData.width,
+        uploadData.height
+      );
+
       // Create project in Convex
       const projectId = await createProject({
         title: projectTitle.trim(),
         originalImageUrl: uploadData.url,
         currentImageUrl: uploadData.url,
         thumbnailUrl: uploadData.thumbnailUrl,
-        width: uploadData.width || 800,
-        height: uploadData.height || 600,
+        width: workspaceSize.width,
+        height: workspaceSize.height,
         canvasState: null,
+        workspacePaddingApplied: true,
       });
 
       toast.success("Project created successfully!");

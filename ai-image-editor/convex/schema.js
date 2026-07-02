@@ -48,6 +48,7 @@ export default defineSchema({
 
     // AI features state - tracks what AI processing has been applied
     backgroundRemoved: v.optional(v.boolean()), // Has background been removed
+    workspacePaddingApplied: v.optional(v.boolean()), // Has default side workspace been added
 
     // Organization
     folderId: v.optional(v.id("folders")), // HW - Optional folder organization

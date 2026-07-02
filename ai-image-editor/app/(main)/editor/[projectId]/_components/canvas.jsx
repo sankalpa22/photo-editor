@@ -4,6 +4,18 @@ import { useConvexMutation } from "@/hooks/use-convex-query";
 import { Canvas, FabricImage } from "fabric";
 import React, { useEffect, useRef, useState } from "react";
 
+const WORKSPACE_SIDE_PADDING_RATIO = 0.12;
+
+function getExpandedWorkspaceWidth(width) {
+  return Math.round(width * (1 + WORKSPACE_SIDE_PADDING_RATIO * 2));
+}
+
+function shiftObjectHorizontally(object, offset) {
+  if (!object || typeof object.left !== "number") return;
+  object.set({ left: object.left + offset });
+  object.setCoords?.();
+}
+
 function CanvasEditor({ project }) {
   const canvasRef = useRef();
   const containerRef = useRef();
@@ -15,13 +27,16 @@ function CanvasEditor({ project }) {
     api.projects.updateProject
   );
 
-  const calculateViewportScale = () => {
+  const calculateViewportScale = (
+    width = project?.width,
+    height = project?.height
+  ) => {
     if (!containerRef.current || !project) return 1;
     const container = containerRef.current;
     const containerWidth = container.clientWidth - 40;
     const containerHeight = container.clientHeight - 40;
-    const scaleX = containerWidth / project.width;
-    const scaleY = containerHeight / project.height;
+    const scaleX = containerWidth / width;
+    const scaleY = containerHeight / height;
     return Math.min(scaleX, scaleY, 1);
   };
 
@@ -31,10 +46,19 @@ function CanvasEditor({ project }) {
     const initializeCanvas = async () => {
       setIsLoading(true);
 
-      const viewportScale = calculateViewportScale();
+      const shouldExpandWorkspace = project.workspacePaddingApplied !== true;
+      const workspaceWidth = shouldExpandWorkspace
+        ? getExpandedWorkspaceWidth(project.width)
+        : project.width;
+      const workspaceHeight = project.height;
+      const workspaceSideOffset = (workspaceWidth - project.width) / 2;
+      const viewportScale = calculateViewportScale(
+        workspaceWidth,
+        workspaceHeight
+      );
       const canvas = new Canvas(canvasRef.current, {
-        width: project.width,
-        height: project.height,
+        width: workspaceWidth,
+        height: workspaceHeight,
         backgroundColor: "#ffffff",
         preserveObjectStacking: true,
         controlsAboveOverlay: true,
@@ -50,8 +74,8 @@ function CanvasEditor({ project }) {
       // Sync both lower and upper canvas layers
       canvas.setDimensions(
         {
-          width: project.width * viewportScale,
-          height: project.height * viewportScale,
+          width: workspaceWidth * viewportScale,
+          height: workspaceHeight * viewportScale,
         },
         { backstoreOnly: false }
       );
@@ -80,25 +104,19 @@ function CanvasEditor({ project }) {
             crossOrigin: "anonymous",
           });
 
-          const imgAspectRatio = fabricImage.width / fabricImage.height;
-          const canvasAspectRatio = project.width / project.height;
-          let scaleX, scaleY;
-
-          if (imgAspectRatio > canvasAspectRatio) {
-            scaleX = project.width / fabricImage.width;
-            scaleY = scaleX;
-          } else {
-            scaleY = project.height / fabricImage.height;
-            scaleX = scaleY;
-          }
+          const scale = Math.min(
+            workspaceWidth / fabricImage.width,
+            workspaceHeight / fabricImage.height,
+            1
+          );
 
           fabricImage.set({
-            left: project.width / 2,
-            top: project.height / 2,
+            left: workspaceWidth / 2,
+            top: workspaceHeight / 2,
             originX: "center",
             originY: "center",
-            scaleX,
-            scaleY,
+            scaleX: scale,
+            scaleY: scale,
             selectable: true,
             evented: true,
           });
@@ -115,6 +133,13 @@ function CanvasEditor({ project }) {
       if (project.canvasState) {
         try {
           await canvas.loadFromJSON(project.canvasState);
+          if (shouldExpandWorkspace) {
+            canvas.getObjects().forEach((object) => {
+              shiftObjectHorizontally(object, workspaceSideOffset);
+            });
+            shiftObjectHorizontally(canvas.backgroundImage, workspaceSideOffset);
+            shiftObjectHorizontally(canvas.overlayImage, workspaceSideOffset);
+          }
           canvas.requestRenderAll();
         } catch (error) {
           console.error("Error loading canvas state:", error);
@@ -129,6 +154,20 @@ function CanvasEditor({ project }) {
         // workaround for initial resize issues
         window.dispatchEvent(new Event("resize"));
       }, 500);
+
+      if (shouldExpandWorkspace) {
+        try {
+          await updateProject({
+            projectId: project._id,
+            width: workspaceWidth,
+            height: workspaceHeight,
+            canvasState: canvas.toJSON(),
+            workspacePaddingApplied: true,
+          });
+        } catch (error) {
+          console.error("Error saving expanded workspace:", error);
+        }
+      }
 
       setIsLoading(false);
     };
